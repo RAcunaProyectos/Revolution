@@ -1,0 +1,22 @@
+services:
+  telegram-publisher:
+    build: .
+    container_name: telegram-publisher
+    restart: unless-stopped
+    ports:
+      - "8501:8501"
+    environment:
+      APP_PASSWORD: ${APP_PASSWORD:?Definí APP_PASSWORD en .env}
+      DATA_DIR: /data
+      TZ: ${TZ:-America/Argentina/Buenos_Aires}
+    volumes:
+      - telegram_publisher_data:/data
+    healthcheck:
+      test: ["CMD", "python", "-c", "import urllib.request; urllib.request.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 20s
+
+volumes:
+  telegram_publisher_data:
