@@ -52,6 +52,7 @@ SESSION_DIR = DATA_DIR / "sessions"
 MEDIA_DIR = DATA_DIR / "media"
 REPORT_DIR = DATA_DIR / "reports"
 RESOLVE_TIMEOUT = 8
+SERVICE_VERSION = 2
 
 
 class Database:
@@ -175,6 +176,7 @@ class CampaignService:
 
     def __init__(self, db: Database) -> None:
         self.db = db
+        self.version = SERVICE_VERSION
         self.loop = asyncio.new_event_loop()
         self.thread = threading.Thread(target=self._loop_main, name="telegram-worker", daemon=True)
         self.thread.start()
@@ -266,6 +268,8 @@ class CampaignService:
         try:
             for account in accounts:
                 client = self.clients.get(account["id"])
+                if not client or not client.is_connected():
+                    client = await self._connect_saved(account)
                 if client and client.is_connected(): connected.append((account, client))
                 else: self.emit(f"{account['name']} no está autorizada; se omite.", "WARN")
             if not connected: self.emit("No hay cuentas autorizadas conectadas.", "ERROR"); return
@@ -291,6 +295,25 @@ class CampaignService:
         finally:
             self.next_run_at = None
             self.emit("Campaña finalizada.")
+
+    async def _connect_saved(self, account: dict[str, Any]) -> TelegramClient | None:
+        """Reconecta una sesión autorizada al crear un worker nuevo."""
+        SESSION_DIR.mkdir(parents=True, exist_ok=True)
+        base = SESSION_DIR / account["id"]
+        if not Path(f"{base}.session").is_file():
+            return None
+        client = TelegramClient(str(base), int(account["api_id"]), account["api_hash"], connection_retries=1, request_retries=1, flood_sleep_threshold=0)
+        try:
+            await client.connect()
+            if await client.is_user_authorized():
+                self.clients[account["id"]] = client
+                self.db.set_account_status(account["id"], "connected", "Sesión reconectada")
+                return client
+        except Exception as exc:
+            self.db.set_account_status(account["id"], "error", f"No se pudo reconectar: {type(exc).__name__}")
+            self.emit(f"No se pudo reconectar {account['name']}: {exc}", "WARN")
+        await client.disconnect()
+        return None
 
     async def _cycle(self, clients: list[tuple[dict[str, Any], TelegramClient]], payload: dict[str, str], delay: float, cycle: int) -> None:
         pending: asyncio.Queue[str | int] = asyncio.Queue(); targets = self.targets(payload["destinations"])
@@ -723,8 +746,8 @@ def render_actions(db: Database, service: CampaignService, body: str, image: str
     if b1.button("▶ Iniciar envíos", type="primary", key="start_campaign", use_container_width=True):
         if not accounts or not destinations.strip() or not (body.strip() or image):
             st.error("Necesitás cuenta autorizada, destinos y contenido.")
-        elif not any(account["id"] in service.clients for account in accounts):
-            st.error("Autorizá al menos una cuenta antes de iniciar.")
+        elif not any(account["id"] in getattr(service, "clients", {}) or Path(f"{SESSION_DIR / account['id']}.session").is_file() for account in accounts):
+            st.error("Autorizá al menos una cuenta y conservá su sesión antes de iniciar.")
         elif not service.start(accounts, {"text": body.strip(), "image": image, "destinations": destinations}, {"delay": delay, "repeat": repeat, "scheduled": scheduled}):
             st.warning("Ya hay una campaña ejecutándose.")
         else:
@@ -782,6 +805,13 @@ def main() -> None:
     if not authenticated():
         return
     db, service = resources()
+    if getattr(service, "version", None) != SERVICE_VERSION:
+        try:
+            service.stop()
+        except Exception:
+            pass
+        resources.clear()
+        st.rerun()
     if "destinations" not in st.session_state:
         st.session_state.destinations = _get_setting(db, "destinations", "")
     st_autorefresh(interval=2000, key="revolution_refresh")
