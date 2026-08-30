@@ -84,6 +84,9 @@ class Database:
                     id INTEGER PRIMARY KEY AUTOINCREMENT, created_at TEXT NOT NULL, cycle INTEGER,
                     account TEXT, target TEXT, status TEXT, detail TEXT
                 );
+                CREATE TABLE IF NOT EXISTS settings (
+                    key TEXT PRIMARY KEY, value TEXT NOT NULL DEFAULT ''
+                );
             """)
         self._migrate_legacy_json()
 
@@ -156,6 +159,15 @@ class Database:
     def results(self) -> list[dict[str, Any]]:
         with self.lock:
             return [dict(row) for row in self.conn.execute("SELECT * FROM results ORDER BY id")]
+
+    def get_setting(self, key: str, default: str = "") -> str:
+        with self.lock:
+            row = self.conn.execute("SELECT value FROM settings WHERE key=?", (key,)).fetchone()
+            return str(row["value"]) if row else default
+
+    def set_setting(self, key: str, value: str) -> None:
+        with self.lock, self.conn:
+            self.conn.execute("INSERT INTO settings(key,value) VALUES(?,?) ON CONFLICT(key) DO UPDATE SET value=excluded.value", (key, value))
 
 
 class CampaignService:
@@ -594,7 +606,7 @@ def render_content(db: Database) -> tuple[str, str]:
 def render_destinations(db: Database, service: CampaignService) -> str:
     st.markdown('<div class="rpm-panel-title"><h3>Destination matrix</h3><small>TXT, CSV, enlaces o IDs</small></div>', unsafe_allow_html=True)
     if "destinations" not in st.session_state:
-        st.session_state.destinations = ""
+        st.session_state.destinations = db.get_setting("destinations", "")
     uploaded = st.file_uploader("Importar lista masiva", type=["txt", "csv"], key="destinations_upload")
     if uploaded:
         try:
@@ -604,6 +616,7 @@ def render_destinations(db: Database, service: CampaignService) -> str:
                 imported = uploaded.getvalue().decode("utf-8")
             if st.session_state.get("_dest_upload") != f"{uploaded.name}:{uploaded.size}":
                 st.session_state.destinations = imported
+                db.set_setting("destinations", imported)
                 st.session_state["_dest_upload"] = f"{uploaded.name}:{uploaded.size}"
         except UnicodeDecodeError:
             st.error("El archivo debe estar codificado en UTF-8.")
@@ -613,9 +626,14 @@ def render_destinations(db: Database, service: CampaignService) -> str:
         st.session_state.destinations_editor = st.session_state.destinations
     value = st.text_area("Un @username, enlace o ID por línea", height=250, key="destinations_editor", placeholder="@grupo_1\nhttps://t.me/grupo_2\n-1001234567890")
     st.session_state.destinations = value
+    db.set_setting("destinations", value)
     count = len(CampaignService.targets(value))
     st.markdown(f'<div class="rpm-note">{count} destinos únicos cargados. El verificador omitirá grupos inaccesibles o sin permisos.</div>', unsafe_allow_html=True)
-    if st.button("Escanear permisos con la primera cuenta", key="scan_destinations", use_container_width=True):
+    save_col, scan_col = st.columns(2)
+    if save_col.button("Guardar destinos", key="save_destinations", use_container_width=True):
+        db.set_setting("destinations", value)
+        st.success("Lista de destinos guardada de forma persistente.")
+    if scan_col.button("Escanear permisos con la primera cuenta", key="scan_destinations", use_container_width=True):
         accounts = [account for account in db.accounts() if account["enabled"]]
         if not accounts:
             st.error("Agregá y autorizá una cuenta antes de escanear.")
@@ -623,6 +641,7 @@ def render_destinations(db: Database, service: CampaignService) -> str:
             valid = service.call(service.scan(accounts[0], CampaignService.targets(value)))
             st.session_state.destinations = "\n".join(valid)
             st.session_state.destinations_editor = st.session_state.destinations
+            db.set_setting("destinations", st.session_state.destinations)
             st.success(f"Conservados {len(valid)} destinos aptos.")
             st.rerun()
     return value
@@ -739,6 +758,8 @@ def main() -> None:
     if not authenticated():
         return
     db, service = resources()
+    if "destinations" not in st.session_state:
+        st.session_state.destinations = db.get_setting("destinations", "")
     st_autorefresh(interval=2000, key="revolution_refresh")
     st.sidebar.markdown('<div class="rpm-kicker">AUTOMATION CONTROL PLANE</div><div class="rpm-brand" style="font-size:1.75rem">Revolution<span>PM</span></div>', unsafe_allow_html=True)
     st.sidebar.caption("Worker persistente · asyncio + Telethon")
