@@ -440,6 +440,21 @@ def _countdown(epoch: float | None) -> str:
     return f"{left // 3600:02}:{left % 3600 // 60:02}:{left % 60:02}"
 
 
+def _service_snapshot(service: CampaignService) -> dict[str, Any]:
+    """Lee el estado incluso si Streamlit conserva un worker de una versión anterior."""
+    reader = getattr(service, "status_snapshot", None)
+    if callable(reader):
+        return reader()
+    return {
+        "running": bool(getattr(service, "running", False)),
+        "paused": not getattr(service, "resume_flag", threading.Event()).is_set(),
+        "next_run_at": getattr(service, "next_run_at", None),
+        "cycle": getattr(service, "current_cycle", 0),
+        "done": getattr(service, "current_done", 0),
+        "total": getattr(service, "current_total", 0),
+    }
+
+
 def authenticated() -> bool:
     if st.session_state.get("authenticated"):
         return True
@@ -478,7 +493,7 @@ def render_brand_header(db: Database, service: CampaignService) -> None:
     sent = sum(row["status"] == "success" for row in results)
     failed = sum(row["status"] == "failed" for row in results)
     accounts = [account for account in db.accounts() if account["enabled"]]
-    snapshot = service.status_snapshot()
+    snapshot = _service_snapshot(service)
     worker = "PAUSED" if snapshot["paused"] else ("RUNNING" if snapshot["running"] else "STANDBY")
     worker_color = "#ffd166" if snapshot["paused"] else ("#00ff66" if snapshot["running"] else "#00e5ff")
     st.markdown(f'<div class="rpm-hero"><div><div class="rpm-kicker">NEXT-GEN TELEGRAM AUTOMATION ENGINE — V2.0 PRO</div><h1 class="rpm-brand">Revolution<span>PM</span></h1><p class="rpm-tagline">Control inteligente de campañas, presets y rotación multicuenta.</p></div><div class="rpm-online"><span class="rpm-pulse"></span>SYSTEM ONLINE</div></div><div class="rpm-kpis"><div class="rpm-kpi"><span class="rpm-kpi-label">MESSAGES SENT</span><strong class="rpm-kpi-value">{sent:,}</strong><span class="rpm-kpi-sub">entregas confirmadas</span></div><div class="rpm-kpi"><span class="rpm-kpi-label">FAILED / SKIPPED</span><strong class="rpm-kpi-value">{failed:,}</strong><span class="rpm-kpi-sub">sin reintentos eternos</span></div><div class="rpm-kpi"><span class="rpm-kpi-label">ACTIVE ACCOUNTS</span><strong class="rpm-kpi-value">{len(accounts):,}</strong><span class="rpm-kpi-sub">credenciales habilitadas</span></div><div class="rpm-kpi"><span class="rpm-kpi-label">NEXT PUBLICATION</span><strong class="rpm-kpi-value" style="color:{worker_color}">{_countdown(snapshot["next_run_at"])}</strong><span class="rpm-kpi-sub">worker: {worker}</span></div></div>', unsafe_allow_html=True)
@@ -491,7 +506,7 @@ def render_terminal(db: Database, limit: int = 18) -> None:
 
 
 def render_progress(service: CampaignService) -> None:
-    snapshot = service.status_snapshot()
+    snapshot = _service_snapshot(service)
     total = int(snapshot["total"] or 0)
     done = min(total, int(snapshot["done"] or 0))
     percent = 0 if not total else int(done * 100 / total)
