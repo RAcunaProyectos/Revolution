@@ -2,3 +2,4 @@ streamlit>=1.38.0
 streamlit-autorefresh>=1.0.1
 Telethon>=1.36.0
 Pillow>=10.0.0
+# Rebuild marker: restart Streamlit's process after worker runtime upgrades.
