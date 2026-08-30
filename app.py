@@ -707,7 +707,7 @@ def export_report(db: Database) -> None:
     REPORT_DIR.mkdir(parents=True, exist_ok=True)
     path = REPORT_DIR / f"reporte_{datetime.now():%Y%m%d_%H%M%S}.csv"
     with path.open("w", newline="", encoding="utf-8-sig") as file:
-        writer = csv.DictWriter(file, fieldnames=["created_at", "cycle", "account", "target", "status", "detail"])
+        writer = csv.DictWriter(file, fieldnames=["created_at", "cycle", "account", "target", "status", "detail"], extrasaction="ignore")
         writer.writeheader()
         writer.writerows(rows)
     st.download_button("Descargar reporte CSV", path.read_bytes(), file_name=path.name, mime="text/csv", use_container_width=True)
