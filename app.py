@@ -716,13 +716,8 @@ def export_report(db: Database) -> None:
 def render_dashboard(db: Database, service: CampaignService) -> None:
     render_brand_header(db, service)
     st.markdown('<div class="rpm-panel-title"><h3>Workspace central</h3><small>todos los módulos en una sola vista</small></div>', unsafe_allow_html=True)
-    destinations_col, accounts_col = st.columns([1.05, 1], gap="large")
-    with destinations_col:
-        with st.container(border=True):
-            render_destinations(db, service)
-    with accounts_col:
-        with st.container(border=True):
-            render_accounts(db, service)
+    with st.container(border=True):
+        render_destinations(db, service)
     left, right = st.columns([1.05, 1], gap="large")
     with left:
         st.markdown('<div class="rpm-panel-title"><h3>Control & presets</h3><small>composición rápida</small></div>', unsafe_allow_html=True)
