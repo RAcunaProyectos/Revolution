@@ -335,6 +335,13 @@ def authenticated() -> bool:
     st.caption("Acceso protegido")
     configured = os.getenv("APP_PASSWORD", "")
     if not configured:
+        # Streamlit Community Cloud expone los valores configurados en
+        # Settings → Secrets a través de st.secrets, no de os.environ.
+        try:
+            configured = str(st.secrets.get("APP_PASSWORD", ""))
+        except Exception:
+            configured = ""
+    if not configured:
         st.error("Definí APP_PASSWORD en el entorno antes de usar la aplicación.")
         return False
     with st.form("login"):
