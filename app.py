@@ -52,7 +52,10 @@ SESSION_DIR = DATA_DIR / "sessions"
 MEDIA_DIR = DATA_DIR / "media"
 REPORT_DIR = DATA_DIR / "reports"
 RESOLVE_TIMEOUT = 8
-SERVICE_VERSION = 2
+# Incrementar cuando cambia la implementación del worker. Streamlit conserva
+# recursos cacheados entre reruns; la versión fuerza su reemplazo y evita que
+# una campaña antigua siga ejecutándose con código desactualizado.
+SERVICE_VERSION = 3
 
 
 class Database:
