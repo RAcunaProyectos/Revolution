@@ -715,6 +715,14 @@ def export_report(db: Database) -> None:
 
 def render_dashboard(db: Database, service: CampaignService) -> None:
     render_brand_header(db, service)
+    st.markdown('<div class="rpm-panel-title"><h3>Workspace central</h3><small>todos los módulos en una sola vista</small></div>', unsafe_allow_html=True)
+    destinations_col, accounts_col = st.columns([1.05, 1], gap="large")
+    with destinations_col:
+        with st.container(border=True):
+            render_destinations(db, service)
+    with accounts_col:
+        with st.container(border=True):
+            render_accounts(db, service)
     left, right = st.columns([1.05, 1], gap="large")
     with left:
         st.markdown('<div class="rpm-panel-title"><h3>Control & presets</h3><small>composición rápida</small></div>', unsafe_allow_html=True)
@@ -727,6 +735,9 @@ def render_dashboard(db: Database, service: CampaignService) -> None:
         render_progress(service)
         render_terminal(db)
         render_account_rotation(db)
+    st.divider()
+    st.markdown('<div class="rpm-panel-title"><h3>Export center</h3><small>reporte de éxitos, fallos y FloodWait</small></div>', unsafe_allow_html=True)
+    export_report(db)
 
 
 def main() -> None:
@@ -742,24 +753,13 @@ def main() -> None:
         st.session_state.authenticated = False
         st.rerun()
     st.sidebar.markdown("---")
-    page = st.sidebar.radio("Navegación", ["Dashboard", "Contenido", "Destinos", "Cuentas", "Control"], key="navigation")
+    st.sidebar.markdown('<div class="rpm-note">Dashboard unificado con acceso directo a la gestión de cuentas.</div>', unsafe_allow_html=True)
     st.sidebar.markdown('<div class="rpm-note" style="margin-top:1rem">La pestaña puede cerrarse: el worker continúa mientras el servidor permanezca activo.</div>', unsafe_allow_html=True)
-    if page == "Dashboard":
-        render_dashboard(db, service)
-    elif page == "Contenido":
-        st.session_state.content = render_content(db)
-    elif page == "Destinos":
-        render_destinations(db, service)
-    elif page == "Cuentas":
+    page = st.sidebar.radio("Navegación", ["Dashboard", "Cuentas"], key="navigation")
+    if page == "Cuentas":
         render_accounts(db, service)
     else:
-        body, image = st.session_state.get("content", ("", ""))
-        destinations = st.session_state.get("destinations", "")
-        render_actions(db, service, body, image, destinations)
-        st.divider()
-        st.markdown('<div class="rpm-panel-title"><h3>Export center</h3><small>reporte de éxito y fallos</small></div>', unsafe_allow_html=True)
-        export_report(db)
-        render_terminal(db)
+        render_dashboard(db, service)
 
 
 if __name__ == "__main__":
